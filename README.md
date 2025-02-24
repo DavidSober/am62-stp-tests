@@ -1,1 +1,1 @@
-test
+contains test programs for Ti am62-sip EVM board.
