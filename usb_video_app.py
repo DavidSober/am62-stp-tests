@@ -3,7 +3,7 @@ import subprocess
 import gi
 import cv2
 import numpy as np
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QThread
 
@@ -11,8 +11,6 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst, GLib
 
 from PyQt5.QtGui import QPalette, QColor
-from PyQt5.QtWidgets import QApplication
-
 
 def enable_dark_mode(app):
     """Applies a dark theme to the PyQt5 app."""
@@ -23,18 +21,11 @@ def enable_dark_mode(app):
     dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
     dark_palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
     dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 255))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
     dark_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
     dark_palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
     dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
-    dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
-    dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
     dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-
     app.setPalette(dark_palette)
-
 
 class VideoThread(QThread):
     """Runs a separate GStreamer loop to prevent Qt threading issues."""
@@ -57,40 +48,60 @@ class VideoApp(QWidget):
         self.appsink2 = None
 
     def initUI(self):
-        layout = QVBoxLayout()
+        main_layout = QHBoxLayout()  # Main horizontal layout with three columns
 
-        # Network "Connect" button
+        # **Left Column: Buttons**
+        button_layout = QVBoxLayout()
         self.connect_btn = QPushButton("Connect", self)
         self.connect_btn.clicked.connect(self.setup_usb_network)
-        layout.addWidget(self.connect_btn)
+        button_layout.addWidget(self.connect_btn)
 
-        # **Dual Video Layout**
-        video_layout = QHBoxLayout()
+        self.start_video_btn = QPushButton("Start Both Videos", self)
+        self.start_video_btn.clicked.connect(self.start_gstreamer)
+        button_layout.addWidget(self.start_video_btn)
+
+        self.stop_video_btn = QPushButton("Stop Both Videos", self)
+        self.stop_video_btn.clicked.connect(self.stop_gstreamer)
+        button_layout.addWidget(self.stop_video_btn)
+
+        button_layout.addStretch()  # Push buttons to the top
+        main_layout.addLayout(button_layout)
+
+        # **Middle Column: Video Feeds (Stacked)**
+        video_layout = QVBoxLayout()
         
-        # First Camera Video Label
         self.video_label1 = QLabel(self)
         self.video_label1.setText("Camera 1")
         video_layout.addWidget(self.video_label1)
 
-        # Second Camera Video Label
         self.video_label2 = QLabel(self)
         self.video_label2.setText("Camera 2")
         video_layout.addWidget(self.video_label2)
 
-        layout.addLayout(video_layout)
+        main_layout.addLayout(video_layout)
 
-        # Start/Stop buttons for both feeds
-        self.start_video_btn = QPushButton("Start Both Videos", self)
-        self.start_video_btn.clicked.connect(self.start_gstreamer)
-        layout.addWidget(self.start_video_btn)
+        # **Right Column: Status Panel**
+        status_layout = QVBoxLayout()
 
-        self.stop_video_btn = QPushButton("Stop Both Videos", self)
-        self.stop_video_btn.clicked.connect(self.stop_gstreamer)
-        layout.addWidget(self.stop_video_btn)
+        self.status_label = QLabel("Status Panel", self)
+        status_layout.addWidget(self.status_label)
 
-        self.setLayout(layout)
+        self.telemetry_label = QLabel("Telemetry: N/A", self)
+        status_layout.addWidget(self.telemetry_label)
+
+        self.latency_label = QLabel("Latency: N/A", self)
+        status_layout.addWidget(self.latency_label)
+
+        self.battery_label = QLabel("Battery: N/A", self)
+        status_layout.addWidget(self.battery_label)
+
+        status_layout.addStretch()  # Push items to the top
+        main_layout.addLayout(status_layout)
+
+        # Apply the layout
+        self.setLayout(main_layout)
         self.setWindowTitle("USB Network & Dual Video Stream")
-        self.resize(1280, 480)  # Wider window for two video feeds
+        self.resize(1280, 720)  # More space for status panel
 
     def setup_usb_network(self):
         """Runs the IP setup commands when 'Connect' is pressed."""
@@ -110,29 +121,22 @@ class VideoApp(QWidget):
         if self.pipeline1 or self.pipeline2:
             return  # Already running
 
-        # **Pipeline for Camera 1 (port=5000)**
         self.pipeline1 = Gst.parse_launch(
             "udpsrc port=5000 ! application/x-rtp, encoding-name=JPEG, payload=26 ! "
             "rtpjpegdepay ! jpegdec ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink1"
         )
         self.appsink1 = self.pipeline1.get_by_name("sink1")
         self.appsink1.set_property("emit-signals", True)
-        self.appsink1.set_property("max-buffers", 1)
-        self.appsink1.set_property("drop", True)
         self.appsink1.connect("new-sample", self.on_new_sample1)
 
-        # **Pipeline for Camera 2 (port=5001)**
         self.pipeline2 = Gst.parse_launch(
             "udpsrc port=5001 ! application/x-rtp, encoding-name=JPEG, payload=26 ! "
             "rtpjpegdepay ! jpegdec ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink2"
         )
         self.appsink2 = self.pipeline2.get_by_name("sink2")
         self.appsink2.set_property("emit-signals", True)
-        self.appsink2.set_property("max-buffers", 1)
-        self.appsink2.set_property("drop", True)
         self.appsink2.connect("new-sample", self.on_new_sample2)
 
-        # Start both pipelines
         self.pipeline1.set_state(Gst.State.PLAYING)
         self.pipeline2.set_state(Gst.State.PLAYING)
         print("GStreamer started for both cameras.")
@@ -181,7 +185,6 @@ class VideoApp(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    # Apply dark mode
     enable_dark_mode(app)
     window = VideoApp()
     window.show()
