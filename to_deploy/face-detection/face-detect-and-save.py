@@ -1,14 +1,23 @@
 import cv2
 import os
 import threading
+import sys
 from datetime import datetime
+import time
+
+# Check for command-line arguments
+show_video = len(sys.argv) > 1 and sys.argv[1] == "v"
+
+
+print("add v arg if you want to display video")
+time.sleep(1)
 
 # Ensure the "face-images" directory exists
 output_dir = "face-images"
 os.makedirs(output_dir, exist_ok=True)
 
 # Open the camera (/dev/video0) with Video4Linux2 (V4L2)
-cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+cap = cv2.VideoCapture(4, cv2.CAP_V4L2)
 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))  # Set format
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # Set width
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)  # Set height
@@ -45,8 +54,7 @@ try:
             break
 
         # Resize frame for faster face detection
-        small_frame = cv2.resize(frame, (320, 240)) 
-        #small_frame = frame # keeps it at 480p 
+        small_frame = cv2.resize(frame, (320, 240))
 
         # Convert to grayscale (Haar cascades work better in grayscale)
         gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
@@ -58,15 +66,25 @@ try:
         for (x, y, w, h) in faces:
             detected = True
 
+            # Draw rectangle around detected face (only if video display is enabled)
+            if show_video:
+                cv2.rectangle(frame, (x * 2, y * 2), ((x + w) * 2, (y + h) * 2), (0, 255, 0), 2)
+
         # If a face is detected, print message and save every 5th frame
         if detected:
             print("Found face!")
 
             if frame_counter % 5 == 0:
                 filename = os.path.join(output_dir, f"face_detected_{save_counter}.jpg")
-                # threading.Thread(target=save_image, args=(frame, filename)).start()
+                threading.Thread(target=save_image, args=(frame, filename)).start()
                 print(f"Saved image: {filename}")
                 save_counter += 1  # Increment save counter
+
+        # Display video if "v" argument was provided
+        if show_video:
+            cv2.imshow("Camera Feed", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
         # T2 - Compute time delta
         time_delta = (current_time - previous_time).total_seconds()  # Time between frames

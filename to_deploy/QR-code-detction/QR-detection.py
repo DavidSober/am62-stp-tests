@@ -2,15 +2,19 @@ import cv2
 import numpy as np
 import os
 import threading
+import sys
 from pyzbar.pyzbar import decode
 from datetime import datetime
+
+# Check for command-line arguments
+show_video = len(sys.argv) > 1 and sys.argv[1] == "v"
 
 # Ensure the "qr-images" directory exists
 QR_IMAGE_DIR = "qr-images"
 os.makedirs(QR_IMAGE_DIR, exist_ok=True)
 
 # Open the camera (/dev/video0) with Video4Linux2 (V4L2)
-cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+cap = cv2.VideoCapture(4, cv2.CAP_V4L2)
 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))  # Set format
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # Set width
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)  # Set height
@@ -28,7 +32,6 @@ deltas = []  # Stores the last 50 frame deltas
 frame_count = 0  # Track number of frames
 
 # Function to save images asynchronously
-# Saving image reduces fps by 5
 def save_image(image, filename):
     cv2.imwrite(filename, image)
 
@@ -43,13 +46,10 @@ try:
             print("Failed to capture image from /dev/video0")
             break
 
-
         # Resize frame to reduce QR processing time
-        small_frame = cv2.resize(frame, (320, 240)) # 240p is 30 fps
-        #small_frame = frame # keeps it at 480p
-  
+        small_frame = cv2.resize(frame, (320, 240))  # 240p is 30 FPS
 
-        # Convert frame to grayscale (comment this out to test if color QR detection is faster)
+        # Convert frame to grayscale for QR processing (comment out for color detection)
         gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
 
         # Detect QR codes
@@ -61,9 +61,19 @@ try:
 
             # Save the frame asynchronously when a QR code is detected
             filename = os.path.join(QR_IMAGE_DIR, f"qr_detected_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            
-            #threading.Thread(target=save_image, args=(frame, filename)).start() # 5 fps hit
+            threading.Thread(target=save_image, args=(frame, filename)).start()  # 5 FPS hit
             print(f"Saved image: {filename}")
+
+            # Draw a rectangle around detected QR codes (if video is enabled)
+            if show_video:
+                x, y, w, h = obj.rect
+                cv2.rectangle(frame, (x * 2, y * 2), ((x + w) * 2, (y + h) * 2), (0, 255, 0), 2)
+
+        # Display video if "v" argument was provided
+        if show_video:
+            cv2.imshow("QR Code Scanner", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
         # T2 - Compute time delta
         time_delta = (current_time - previous_time).total_seconds()  # Time between frames
@@ -90,4 +100,5 @@ except KeyboardInterrupt:
 
 finally:
     cap.release()
+    cv2.destroyAllWindows()
     print("Camera released. Exiting.")

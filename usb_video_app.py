@@ -1,7 +1,6 @@
 import sys
 import subprocess
 import gi
-import cv2
 import numpy as np
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
 from PyQt5.QtGui import QImage, QPixmap
@@ -11,6 +10,43 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst, GLib
 
 from PyQt5.QtGui import QPalette, QColor
+
+from PyQt5.QtCore import QThread, pyqtSignal
+import websocket
+import json
+
+class WebSocketThread(QThread):
+    """Handles WebSocket connection in a separate thread to avoid freezing the UI."""
+    telemetry_received = pyqtSignal(str, float)  # Signal to update UI
+
+    def run(self):
+        def on_message(ws, message):
+            """Process incoming WebSocket messages."""
+            data = json.loads(message)
+            latency = data.get("latency", 0)
+            battery = data.get("battery", 0)
+            status = data.get("status", "N/A")
+            self.telemetry_received.emit(status, battery)  # Emit signal to update UI
+
+        ws = websocket.WebSocketApp("ws://192.168.2.2:5003",
+                                    on_message=on_message)
+        ws.run_forever()
+
+class VideoApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+        # Start WebSocket thread
+        self.websocket_thread = WebSocketThread()
+        self.websocket_thread.telemetry_received.connect(self.update_telemetry)
+        self.websocket_thread.start()
+
+    def update_telemetry(self, status, battery):
+        """Update the telemetry panel in the UI."""
+        self.telemetry_label.setText(f"Telemetry: {status}")
+        self.battery_label.setText(f"Battery: {battery}%")
+
 
 def enable_dark_mode(app):
     """Applies a dark theme to the PyQt5 app."""
