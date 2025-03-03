@@ -38,4 +38,21 @@ ln -s functions/ecm.0 configs/c.1/
 # Enable the USB gadget
 echo 31000000.usb > UDC
 
+# Assign static IP to USB interface
+#echo "Configuring USB0 interface..."
+#ip addr add 192.168.2.2/24 dev usb0
+#ip link set usb0 up
+
+# Wait for the USB interface to appear before assigning an IP
+echo "Waiting for USB0 to be available..."
+while ! ip link show usb0 > /dev/null 2>&1; do
+    sleep 1
+done
+
+# Assign static IP to USB interface
+echo "Configuring USB0 interface..."
+ip addr add 192.168.2.2/24 dev usb0
+ip link set usb0 up
+
+
 echo "USB Ethernet Gadget Setup Complete"
